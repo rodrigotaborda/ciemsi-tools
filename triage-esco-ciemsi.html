@@ -6,7 +6,6 @@
 <title>Triage ESCO — CIEMSI GROUP</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.20/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -19,7 +18,6 @@ input,select{font-family:inherit}
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useMemo}=React;
-const {BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,Cell,LabelList}=Recharts;
 
 const C={verde:"#008555",rojo:"#D91F2D",oscuro:"#424242",claro:"#F5F5F5",borde:"#E0E0E0",ambar:"#E65100",azulIn:"#E3F2FD",azulTx:"#1565C0",verdeIn:"#E8F5E9",verdeTx:"#2E7D32",gris:"#757575"};
 
@@ -249,17 +247,28 @@ function App(){
       </div>
       <div style={hS}>Desglose por medida — ahorro conservador (kUSD/año)</div>
       <div style={{marginBottom:14}}>
-        <ResponsiveContainer width="100%" height={Math.max(180,med.length*46)}>
-          <BarChart data={cd} layout="vertical" margin={{top:2,right:50,left:8,bottom:0}}>
-            <XAxis type="number" unit="k" tick={{fontSize:11}}/>
-            <YAxis type="category" dataKey="name" width={235} tick={{fontSize:10}}/>
-            <Tooltip formatter={v=>[`USD ${v}k`,"Ahorro conservador"]}/>
-            <Bar dataKey="min" barSize={12} radius={[0,4,4,0]}>
-              {cd.map((e,i)=><Cell key={i} fill={MCOL[e.id]||C.verde}/>)}
-              <LabelList dataKey="min" position="right" formatter={v=>`${v}k`} style={{fontSize:11,fill:C.oscuro}}/>
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {(()=>{
+          const maxV=Math.max(...cd.map(e=>e.max),1);
+          return(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {cd.map((e,i)=>{
+                const pctMin=Math.round((e.min/maxV)*100);
+                const pctMax=Math.round((e.max/maxV)*100);
+                const col=MCOL[e.id]||C.verde;
+                return(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:11}}>
+                    <div style={{width:220,flexShrink:0,color:"#444",lineHeight:1.3,textAlign:"right",paddingRight:6}}>{e.name}</div>
+                    <div style={{flex:1,position:"relative",height:14,background:"#eee",borderRadius:3}}>
+                      <div style={{position:"absolute",left:0,top:0,height:"100%",width:pctMax+"%",background:col,opacity:.25,borderRadius:3}}/>
+                      <div style={{position:"absolute",left:0,top:0,height:"100%",width:pctMin+"%",background:col,borderRadius:3}}/>
+                    </div>
+                    <div style={{width:60,flexShrink:0,color:C.oscuro,fontWeight:600}}>{e.min}–{e.max}k</div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
       <div style={{overflowX:"auto",marginBottom:18}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -327,7 +336,7 @@ function App(){
     </div>
   );
 }
-ReactDOM.render(React.createElement(App),document.getElementById("root"));
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
