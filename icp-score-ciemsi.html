@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ICP + Score — CIEMSI ESCO Grandes Consumidores</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f4; color: #222; min-height: 100vh; }
+
+    /* HEADER */
+    .header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+    .header-dot { width: 10px; height: 10px; border-radius: 50%; background: #4CAF50; }
+    .header h1 { font-size: 15px; font-weight: 600; letter-spacing: .5px; }
+    .header-sub { font-size: 12px; color: #aaa; margin-left: auto; }
+
+    /* LAYOUT */
+    .app { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+
+    /* SCORE PANEL */
+    .score-panel { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 20px; border: 1px solid #e0e0e0; display: flex; gap: 28px; align-items: center; }
+    .score-gauge { flex-shrink: 0; position: relative; width: 120px; height: 120px; }
+    .score-gauge svg { width: 120px; height: 120px; }
+    .score-number { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .score-number .num { font-size: 32px; font-weight: 700; line-height: 1; }
+    .score-number .of100 { font-size: 11px; color: #888; }
+    .score-info { flex: 1; }
+    .priority-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+    .score-empresa { font-size: 17px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+    .score-sector { font-size: 12px; color: #666; margin-bottom: 12px; }
+    .score-bars { display: flex; flex-direction: column; gap: 5px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .bar-label { width: 130px; color: #555; flex-shrink: 0; }
+    .bar-track { flex: 1; height: 6px; background: #eee; border-radius: 3px; }
+    .bar-fill { height: 6px; border-radius: 3px; transition: width .4s; }
+    .bar-pts { width: 32px; text-align: right; color: #333; font-weight: 600; }
+
+    /* NEXT STEPS */
+    .nextstep { margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
+
+    /* FORM SECTION */
+    .section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 16px; border: 1px solid #e0e0e0; }
+    .section-title { font-size: 13px; font-weight: 700; letter-spacing: .3px; margin-bottom: 16px; color: #1a1a1a; display: flex; align-items: center; gap: 8px; }
+    .section-title .pts-max { font-size: 11px; font-weight: 400; color: #888; background: #f5f5f5; padding: 2px 8px; border-radius: 10px; }
+
+    /* INPUTS */
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: #444; margin-bottom: 5px; }
+    .field input[type=text] { width: 100%; border: 1px solid #ccc; border-radius: 5px; padding: 7px 10px; font-size: 13px; }
+    .field input[type=text]:focus { outline: none; border-color: #424242; }
+    .field select { width: 100%; border: 1px solid #ccc; border-radius: 5px; padding: 7px 10px; font-size: 13px; background: #fff; }
+    .field select:focus { outline: none; border-color: #424242; }
+    .field .hint { font-size: 11px; color: #888; margin-top: 3px; }
+
+    .radio-group { display: flex; flex-direction: column; gap: 6px; }
+    .radio-opt { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid #e0e0e0; border-radius: 6px; cursor: pointer; transition: background .15s, border-color .15s; }
+    .radio-opt:hover { background: #fafafa; }
+    .radio-opt.selected { background: #E8F5E9; border-color: #4CAF50; }
+    .radio-opt input[type=radio] { margin-top: 2px; flex-shrink: 0; accent-color: #2E7D32; }
+    .radio-opt-content { flex: 1; }
+    .radio-opt-label { font-size: 12px; font-weight: 600; color: #222; }
+    .radio-opt-desc { font-size: 11px; color: #666; margin-top: 1px; }
+    .radio-opt-pts { font-size: 12px; font-weight: 700; color: #2E7D32; white-space: nowrap; margin-left: auto; padding-left: 8px; }
+
+    /* FLAGS */
+    .flags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .flag-chip { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+    .flag-chip.red { background: #ffebee; color: #b71c1c; border-color: #ef9a9a; }
+    .flag-chip.ok { background: #E8F5E9; color: #1b5e20; border-color: #a5d6a7; }
+
+    /* DESCALIF */
+    .descalif-banner { background: #ffebee; border: 1px solid #ef9a9a; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #b71c1c; font-weight: 600; display: flex; gap: 8px; }
+
+    /* PRINT */
+    @media print {
+      .no-print { display: none !important; }
+      .score-panel, .section { break-inside: avoid; }
+      body { background: #fff; }
+    }
+
+    /* RESET BTN */
+    .reset-btn { background: none; border: 1px solid #ccc; padding: 5px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; color: #555; }
+    .reset-btn:hover { background: #f5f5f5; }
+    .print-btn { background: #1a1a1a; color: #fff; border: none; padding: 6px 16px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+    .print-btn:hover { background: #333; }
+    .btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 16px; }
+
+    /* COLS */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="header">
+  <div class="header-dot"></div>
+  <h1>ICP + Score — ESCO Grandes Consumidores</h1>
+  <span class="header-sub">CIEMSi GROUP · v1.0</span>
+</div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+/* ─── SCORING DIMENSIONS ─── */
+const DIM_GASTO = {
+  id: "gasto", label: "Gasto energético anual", max: 35,
+  hint: "Suma eléctrico + gas + combustible, sin IVA",
+  opts: [
+    { val: 35, label: "> USD 300.000/año", desc: "Cliente de primer orden — múltiples medidas viables, CAPEX CIEMSI > USD 500k" },
+    { val: 25, label: "USD 150.000 – 300.000/año", desc: "Ticket viable — mínimo 2 medidas, CAPEX CIEMSI USD 200–500k" },
+    { val: 12, label: "USD 80.000 – 150.000/año", desc: "Límite inferior — una sola medida grande puede alcanzar el umbral" },
+    { val: 3,  label: "< USD 80.000/año", desc: "Por debajo del umbral mínimo CIEMSI. No califica salvo situación especial." },
+  ]
+};
+
+const DIM_POTENCIAL = {
+  id: "potencial", label: "Potencial técnico percibido", max: 25,
+  hint: "Basado en observación visual, factura o conversación inicial",
+  opts: [
+    { val: 25, label: "Múltiples vectores + instalaciones obsoletas", desc: "Eléctrico + térmico/gas, iluminación vieja, climatización ineficiente, sin FV — oportunidades apilables" },
+    { val: 18, label: "Dos vectores o una medida grande clara", desc: "Ej: potencia sobredimensionada evidente + LED, o gran consumo de fuerza motriz" },
+    { val: 10, label: "Un vector, potencial moderado", desc: "Solo electricidad, instalación parcialmente renovada, pocas oportunidades visibles" },
+    { val: 4,  label: "Instalación reciente / ya eficientizada", desc: "Renovación reciente, ya tiene FV o LED — margen muy reducido" },
+  ]
+};
+
+const DIM_LEGAL = {
+  id: "legal", label: "Marco legal / Acceso ESCO", max: 15,
+  hint: "Determina el proceso de contratación y su velocidad",
+  opts: [
+    { val: 15, label: "Organismo público (Decreto 289/015)", desc: "ASSE, OSE, UdelaR, intendencias, etc. — contratación directa sin licitación. Ventaja competitiva máxima de CIEMSI." },
+    { val: 11, label: "Empresa privada — decisor es dueño/socio", desc: "Decide solo, proceso ágil, no requiere aprobación interna" },
+    { val: 7,  label: "Empresa privada — gerente con autonomía", desc: "Puede avanzar, pero requiere aval de directorio o casa matriz" },
+    { val: 3,  label: "Empresa privada — proceso largo de aprobación", desc: "Licitación interna, múltiples aprobadores, ciclo > 12 meses probable" },
+  ]
+};
+
+const DIM_DECISOR = {
+  id: "decisor", label: "Acceso al decisor", max: 15,
+  hint: "¿Quién firma el contrato y qué nivel de acceso tenemos?",
+  opts: [
+    { val: 15, label: "Contacto directo con el decisor", desc: "Ya hablamos con la persona que firma. Relación establecida." },
+    { val: 11, label: "Reunión agendada con el decisor", desc: "Hay una cita confirmada. Aún no hay relación." },
+    { val: 7,  label: "Referido o introducción indirecta", desc: "Alguien nos presentó o recomendó. Primer contacto por hacer." },
+    { val: 2,  label: "Contacto frío / sin puerta de entrada", desc: "No hay referido ni contacto. Prospecto frío." },
+  ]
+};
+
+const DIM_ALIADO = {
+  id: "aliado", label: "Aliado técnico interno", max: 10,
+  hint: "Jefe de mantenimiento, facilities, o encargado técnico del cliente",
+  opts: [
+    { val: 10, label: "Aliado activo — quiere el proyecto", desc: "El técnico interno es promotor. Facilita relevamiento y reduce fricción." },
+    { val: 6,  label: "Neutro / no identificado aún", desc: "No sabemos su postura. No es obstáculo conocido." },
+    { val: 2,  label: "Resistencia o bloqueo técnico interno", desc: "El técnico interno se opone o es un obstáculo identificado." },
+  ]
+};
+
+const DIMS = [DIM_GASTO, DIM_POTENCIAL, DIM_LEGAL, DIM_DECISOR, DIM_ALIADO];
+
+/* ─── PRIORITY CONFIG ─── */
+function getPriority(score, descalif) {
+  if (descalif) return { label: "Descartado", color: "#9e9e9e", bg: "#f5f5f5", steps: ["No califica para un contrato ESCO de CIEMSI en este momento.", "Podés registrarlo para re-evaluar en 12–18 meses si cambia la situación.", "Considerá derivarlo al programa ESCO Pyme si el gasto energético lo permite."] };
+  if (score >= 80) return { label: "Prioridad A — Iniciar proceso", color: "#1b5e20", bg: "#E8F5E9", steps: ["Agendar auditoría energética preliminar (etapa 1 del proceso ESCO).", "Proponer firma de NDA / acuerdo de confidencialidad para compartir datos de consumo.", "Presentar caso INOT-ASSE o caso ancla del sector como referencia.", "Objetivo: confirmación de interés en ≤ 30 días."] };
+  if (score >= 60) return { label: "Prioridad B — Madurar", color: "#1565C0", bg: "#E3F2FD", steps: ["Solicitar facturas UTE de los últimos 12 meses para pre-análisis.", "Identificar y contactar al aliado técnico interno si no está.", "Presentar el mecanismo ESCO en una reunión breve (30 min, sin propuesta aún).", "Objetivo: calificar o descartar en ≤ 60 días."] };
+  if (score >= 40) return { label: "Prioridad C — Cultivar", color: "#e65100", bg: "#fff3e0", steps: ["Mantener en pipeline. No invertir tiempo de ingeniería aún.", "Hacer 1 contacto de seguimiento en 90 días.", "Detectar cambio de contexto: renovación edilicia, cambio de gerencia, suba de tarifa."] };
+  return { label: "Baja prioridad", color: "#757575", bg: "#fafafa", steps: ["Score insuficiente para avanzar ahora.", "Re-evaluar solo si hay cambio material en el gasto energético o el acceso al decisor."] };
+}
+
+/* ─── DESCALIFICATION FLAGS ─── */
+function getFlags(scores) {
+  const flags = [];
+  if (scores.gasto === 3)   flags.push({ text: "Gasto < USD 80k — bajo umbral CIEMSI", type: "red" });
+  if (scores.potencial === 4) flags.push({ text: "Instalación ya eficientizada — margen mínimo", type: "red" });
+  if (scores.decisor === 2) flags.push({ text: "Contacto frío — sin puerta de entrada", type: "warn" });
+  if (scores.aliado === 2)  flags.push({ text: "Resistencia técnica interna", type: "warn" });
+  if (scores.legal === 3)   flags.push({ text: "Ciclo de aprobación largo (privado sin autonomía)", type: "warn" });
+  if (scores.legal === 15)  flags.push({ text: "Decreto 289/015 — contratación directa", type: "ok" });
+  if (scores.gasto === 35)  flags.push({ text: "Gasto > USD 300k — cliente de primer orden", type: "ok" });
+  return flags;
+}
+
+/* ─── GAUGE SVG ─── */
+function Gauge({ score, color }) {
+  const r = 48, cx = 60, cy = 60;
+  const total = Math.PI * 1.5; // 270°
+  const start = Math.PI * 1.25; // start at 225°
+  const pct = Math.min(score / 100, 1);
+  const angle = start + pct * total;
+  const x1 = cx + r * Math.cos(Math.PI * 1.25);
+  const y1 = cy + r * Math.sin(Math.PI * 1.25);
+  const x2 = cx + r * Math.cos(angle);
+  const y2 = cy + r * Math.sin(angle);
+  const large = pct * total > Math.PI ? 1 : 0;
+  const xEnd = cx + r * Math.cos(Math.PI * 1.25 + total);
+  const yEnd = cy + r * Math.sin(Math.PI * 1.25 + total);
+  return (
+    <svg viewBox="0 0 120 120">
+      <path d={`M ${x1} ${y1} A ${r} ${r} 0 1 1 ${xEnd} ${yEnd}`} fill="none" stroke="#eee" strokeWidth="9" strokeLinecap="round" />
+      {score > 0 && <path d={`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
+/* ─── MAIN APP ─── */
+function App() {
+  const init = { empresa: "", sector: "", scores: {}, };
+  const [empresa, setEmpresa] = useState("");
+  const [sector, setSector] = useState("");
+  const [scores, setScores] = useState({});
+
+  const total = useMemo(() => Object.values(scores).reduce((a, b) => a + b, 0), [scores]);
+  const descalif = scores.gasto === 3;
+  const priority = getPriority(total, descalif);
+  const flags = getFlags(scores);
+  const allAnswered = DIMS.every(d => scores[d.id] !== undefined);
+
+  const gaugeColor = descalif ? "#9e9e9e" : total >= 80 ? "#2E7D32" : total >= 60 ? "#1565C0" : total >= 40 ? "#e65100" : "#9e9e9e";
+
+  function reset() {
+    setEmpresa(""); setSector(""); setScores({});
+  }
+
+  const SECTORES = ["Salud", "Industria", "Educación", "Retail / Comercio", "Servicios", "Hotelería", "Logística / Distribución", "Agro / Agroindustria", "Otro"];
+
+  return (
+    <div className="app">
+      {/* Action buttons */}
+      <div className="btn-row no-print">
+        <button className="reset-btn" onClick={reset}>↺ Nuevo prospecto</button>
+        <button className="print-btn" onClick={() => window.print()}>⎙ Imprimir / PDF</button>
+      </div>
+
+      {/* SCORE PANEL */}
+      <div className="score-panel">
+        <div className="score-gauge">
+          <Gauge score={allAnswered ? total : 0} color={gaugeColor} />
+          <div className="score-number">
+            <span className="num" style={{ color: gaugeColor }}>{allAnswered ? total : "—"}</span>
+            <span className="of100">/100</span>
+          </div>
+        </div>
+        <div className="score-info">
+          {empresa && <div className="score-empresa">{empresa}</div>}
+          {sector  && <div className="score-sector">{sector}</div>}
+          <div className="priority-badge" style={{ background: priority.bg, color: priority.color }}>
+            {allAnswered ? priority.label : "Completá el formulario"}
+          </div>
+          {/* Dimension bars */}
+          <div className="score-bars">
+            {DIMS.map(d => {
+              const v = scores[d.id] ?? 0;
+              const pct = (v / d.max) * 100;
+              return (
+                <div className="bar-row" key={d.id}>
+                  <span className="bar-label">{d.label}</span>
+                  <div className="bar-track">
+                    <div className="bar-fill" style={{ width: pct + "%", background: pct >= 70 ? "#4CAF50" : pct >= 40 ? "#FFA726" : "#EF5350" }} />
+                  </div>
+                  <span className="bar-pts">{scores[d.id] !== undefined ? v : "—"}/{d.max}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* DESCALIF BANNER */}
+      {descalif && (
+        <div className="descalif-banner">
+          ✕ Gasto energético por debajo del umbral mínimo CIEMSI (USD 80.000/año). El cliente no califica para un contrato ESCO de esta escala.
+        </div>
+      )}
+
+      {/* NEXT STEPS */}
+      {allAnswered && (
+        <div className="section">
+          <div className="section-title">Próximos pasos recomendados</div>
+          <ol style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+            {priority.steps.map((s, i) => (
+              <li key={i} style={{ fontSize: 13, color: "#333", lineHeight: 1.5 }}>{s}</li>
+            ))}
+          </ol>
+          {flags.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>FLAGS</div>
+              <div className="flags">
+                {flags.map((f, i) => (
+                  <span key={i} className={`flag-chip ${f.type === "red" ? "red" : f.type === "ok" ? "ok" : ""}`}>{f.text}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DATOS GENERALES */}
+      <div className="section">
+        <div className="section-title">Datos del prospecto</div>
+        <div className="two-col">
+          <div className="field">
+            <label>Empresa / Organismo</label>
+            <input type="text" placeholder="Ej: Hospital Pasteur — ASSE" value={empresa} onChange={e => setEmpresa(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Sector</label>
+            <select value={sector} onChange={e => setSector(e.target.value)}>
+              <option value="">— seleccioná —</option>
+              {SECTORES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* SCORING DIMENSIONS */}
+      {DIMS.map(dim => (
+        <div className="section" key={dim.id}>
+          <div className="section-title">
+            {dim.label}
+            <span className="pts-max">hasta {dim.max} pts</span>
+          </div>
+          {dim.hint && <div style={{ fontSize: 11, color: "#888", marginBottom: 12 }}>{dim.hint}</div>}
+          <div className="radio-group">
+            {dim.opts.map(opt => (
+              <label
+                key={opt.val}
+                className={`radio-opt ${scores[dim.id] === opt.val ? "selected" : ""}`}
+                onClick={() => setScores(prev => ({ ...prev, [dim.id]: opt.val }))}
+              >
+                <input
+                  type="radio"
+                  name={dim.id}
+                  checked={scores[dim.id] === opt.val}
+                  onChange={() => setScores(prev => ({ ...prev, [dim.id]: opt.val }))}
+                />
+                <div className="radio-opt-content">
+                  <div className="radio-opt-label">{opt.label}</div>
+                  <div className="radio-opt-desc">{opt.desc}</div>
+                </div>
+                <span className="radio-opt-pts">{opt.val} pts</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* FOOTER */}
+      <div style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: 24 }} className="no-print">
+        CIEMSi GROUP — Herramienta interna de calificación ESCO · v1.0
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

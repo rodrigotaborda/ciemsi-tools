@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CIEMSi — Kit Comercial ESCO</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; }
+    .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #4CAF50; }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .sub { font-size: 13px; color: #888; margin-bottom: 48px; letter-spacing: .5px; }
+    .tools { display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 460px; }
+    .tool-card { background: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 20px 22px; text-decoration: none; color: #fff; display: flex; align-items: flex-start; gap: 16px; transition: border-color .2s, background .2s; }
+    .tool-card:hover { border-color: #4CAF50; background: #232323; }
+    .tool-icon { font-size: 26px; flex-shrink: 0; margin-top: 1px; }
+    .tool-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .tool-desc { font-size: 12px; color: #999; line-height: 1.5; }
+    .tool-tag { display: inline-block; margin-top: 6px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    .tag-triage { background: #1a3a1a; color: #81C784; }
+    .tag-icp { background: #1a2a3a; color: #64B5F6; }
+    .footer { margin-top: 48px; font-size: 11px; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="logo-row">
+    <div class="dot"></div>
+    <div class="brand">CIEMSi GROUP</div>
+  </div>
+  <div class="sub">Kit Comercial ESCO · Grandes Consumidores</div>
+
+  <div class="tools">
+    <a class="tool-card" href="triage-esco-ciemsi.html">
+      <div class="tool-icon">⚡</div>
+      <div>
+        <div class="tool-title">Triage ESCO</div>
+        <div class="tool-desc">Estimá el potencial de ahorro y CAPEX de un cliente en base a su gasto energético. Simula 9 medidas de eficiencia y genera un ranking priorizando por retorno.</div>
+        <span class="tool-tag tag-triage">Estimación · 9 medidas</span>
+      </div>
+    </a>
+
+    <a class="tool-card" href="icp-score-ciemsi.html">
+      <div class="tool-icon">🎯</div>
+      <div>
+        <div class="tool-title">ICP + Score de Prospecto</div>
+        <div class="tool-desc">Calificá un prospecto en 5 dimensiones (gasto, potencial técnico, marco legal, acceso al decisor, aliado interno) y obtené una prioridad de acción con próximos pasos.</div>
+        <span class="tool-tag tag-icp">Calificación · Score 0–100</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="footer">Uso interno — CIEMSi GROUP · CSI Ingeniería</div>
+</body>
+</html>

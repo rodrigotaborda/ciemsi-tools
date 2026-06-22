@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Triage ESCO — CIEMSI GROUP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.20/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;justify-content:center;padding:20px}
+#root{width:100%;max-width:820px}
+input,select{font-family:inherit}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useMemo}=React;
+const {BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,Cell,LabelList}=Recharts;
+
+const C={verde:"#008555",rojo:"#D91F2D",oscuro:"#424242",claro:"#F5F5F5",borde:"#E0E0E0",ambar:"#E65100",azulIn:"#E3F2FD",azulTx:"#1565C0",verdeIn:"#E8F5E9",verdeTx:"#2E7D32",gris:"#757575"};
+
+const SECTORES=[{v:"salud",l:"Salud (hospitales, sanatorios, policlínicas)"},{v:"industria",l:"Industria (frigorífico, alimentaria, metalúrgica)"},{v:"educacion",l:"Educación (universidades, institutos)"},{v:"retail",l:"Comercio / Retail (cadenas, centros comerciales)"},{v:"servicios",l:"Servicios / Edificio corporativo / Gobierno"},{v:"hoteleria",l:"Hotelería y turismo"},{v:"logistica",l:"Logística / Depósito / Cámaras de frío"},{v:"otro",l:"Otro"}];
+const TARIFAS=[{v:"mc1",l:"MC1 — Mediano Consumidor tipo 1"},{v:"mc2",l:"MC2 — Mediano Consumidor tipo 2"},{v:"mc3",l:"MC3 — Mediano Consumidor tipo 3"},{v:"gc12",l:"GC1/GC2 — Gran Consumidor hasta ~300 kW"},{v:"gc35",l:"GC3/GC4/GC5 — Gran Consumidor >300 kW"},{v:"the",l:"T.H.E. (Hora-Estacional)"},{v:"nc",l:"No lo sé / A confirmar"}];
+const ANOS=[{v:"pre1980",l:"Antes de 1980 (>45 años)"},{v:"1980-2000",l:"1980–2000 (25–45 años)"},{v:"2001-2015",l:"2001–2015 (10–25 años)"},{v:"post2015",l:"Después de 2015 (<10 años)"},{v:"nc",l:"No sé"}];
+const MCOL={tarifa:"#1565C0",punta:"#0288D1",led:"#F9A825",clima:"#00695C",envolvente:"#558B2F",motores:"#6A1B9A",solar:"#E65100",bms:"#546E7A",termico:"#B71C1C",bombaCalor:"#AD1457"};
+
+function calcular(d){
+  const cMed=(d.consumoKWh>0&&d.facturaUSD>0)?d.facturaUSD/d.consumoKWh:0.090;
+  const gastoElec=d.facturaUSD>0?d.facturaUSD*12:(d.consumoKWh>0?d.consumoKWh*12*cMed:0);
+  if(gastoElec<1000)return null;
+  const hMes=d.horasDia*d.diasSemana*4.33;
+  const demMed=hMes>0&&d.consumoKWh>0?d.consumoKWh/hMes:0;
+  const fu=d.potenciaKW>0&&demMed>0?Math.min(demMed/d.potenciaKW,1.6):0;
+  const med=[];
+  if(d.potenciaKW>0&&fu>0){
+    let pMin=0,pMax=0,nota="";
+    if(fu<0.20){pMin=0.25;pMax=0.45;nota="Potencia extremadamente sobredimensionada (FU<20%) — cargo de potencia domina la factura; ahorro determinístico de primer orden";}
+    else if(fu<0.33){pMin=0.10;pMax=0.20;nota="Potencia muy sobredimensionada — ahorro directo de alto impacto. Validar pico anual";}
+    else if(fu<0.50){pMin=0.05;pMax=0.12;nota="Potencia posiblemente sobredimensionada; confirmar pico anual"}
+    else if(fu<0.65){pMin=0.02;pMax=0.06;nota="Margen moderado; evaluar luego de otras medidas que bajen el pico";}
+    if(pMax>0)med.push({id:"tarifa",nombre:"Optimización de tarifa y potencia contratada",cat:"A",conf:"alta",aMin:gastoElec*pMin,aMax:gastoElec*pMax,cMin:0,cMax:800,nota});
+  }
+  if(d.operaPunta==="parcial"||(d.operaPunta==="si"&&d.diasSemana<=5))
+    med.push({id:"punta",nombre:"Time-shift de cargas / optimización ventana Punta (MC/GC: 18–22 h)",cat:"A",conf:"media",aMin:gastoElec*0.03,aMax:gastoElec*0.08,cMin:0,cMax:3000,nota:"Requiere identificar cargas desplazables fuera del bloque 18–22 h hábiles"});
+  const fracLuz={salud:.28,industria:.08,educacion:.30,retail:.35,servicios:.32,hoteleria:.30,logistica:.10,otro:.25}[d.sector]||.25;
+  const ilumCfg={fluorescente:{efMin:.55,efMax:.70,cM2:[12,22],conf:"alta"},mercurio:{efMin:.65,efMax:.80,cM2:[15,28],conf:"alta"},sodio:{efMin:.60,efMax:.75,cM2:[12,24],conf:"alta"},mixto:{efMin:.35,efMax:.55,cM2:[8,18],conf:"media"}}[d.iluminacion];
+  if(ilumCfg){
+    const aMin2=gastoElec*fracLuz*ilumCfg.efMin,aMax2=gastoElec*fracLuz*ilumCfg.efMax;
+    const cMin=d.sup>0?d.sup*ilumCfg.cM2[0]:aMin2*1.8;
+    const cMax=d.sup>0?d.sup*ilumCfg.cM2[1]:aMax2*3.2;
+    med.push({id:"led",nombre:"Renovación de iluminación a LED",cat:"A",conf:ilumCfg.conf,aMin:aMin2,aMax:aMax2,cMin,cMax,nota:`Estimado sobre fracción iluminación del sector (~${Math.round(fracLuz*100)}% consumo). Determinista una vez relevados circuitos`});
+  }
+  const fracHVAC={salud:.30,industria:.15,educacion:.33,retail:.43,servicios:.48,hoteleria:.45,logistica:.18,otro:.30}[d.sector]||.30;
+  const gHVAC=gastoElec*fracHVAC;
+  const climaCfg={"split-viejo":{eMin:.25,eMax:.40,cM2:[35,75]},"chiller-viejo":{eMin:.20,eMax:.35,cM2:[45,90]},"central-viejo":{eMin:.20,eMax:.33,cM2:[40,85]},"vrf-viejo":{eMin:.12,eMax:.22,cM2:[30,65]}}[d.climatizacion];
+  if(climaCfg){
+    const fEnv=d.envolvente?1.18:1.0;
+    const sC=d.sup>0?d.sup*0.70:gHVAC/45;
+    const cEnvMin=d.envolvente?(d.sup>0?d.sup*28:25000):0;
+    const cEnvMax=d.envolvente?(d.sup>0?d.sup*58:70000):0;
+    med.push({id:"clima",nombre:"Renovación climatización (VRF inverter / chiller)"+(d.envolvente?" + mejora envolvente":""),cat:"B",conf:"media",aMin:gHVAC*climaCfg.eMin*fEnv,aMax:gHVAC*climaCfg.eMax*fEnv,cMin:sC*climaCfg.cM2[0]+cEnvMin,cMax:sC*climaCfg.cM2[1]+cEnvMax,nota:"Cat. B: requiere medición del consumo HVAC como foto inicial del contrato"});
+  }else if(d.envolvente){
+    med.push({id:"envolvente",nombre:"Mejora de envolvente edilicia (aislación, DVH, sellado)",cat:"B",conf:"media",aMin:gHVAC*.10,aMax:gHVAC*.22,cMin:d.sup>0?d.sup*28:20000,cMax:d.sup>0?d.sup*60:65000,nota:"Reduce demanda de climatización 15–25 %; complementa recambio de sistema"});
+  }
+  if(d.motoreskW>50){
+    const kWhM=d.motoreskW*d.horasDia*d.diasSemana*52*0.55;
+    med.push({id:"motores",nombre:"Variadores de frecuencia (VFD) en motores de carga variable",cat:"B",conf:"media",aMin:kWhM*cMed*0.15,aMax:kWhM*cMed*0.30,cMin:d.motoreskW*140,cMax:d.motoreskW*320,nota:"Bombas, ventiladores, compresores con perfil variable"});
+  }
+  if(d.techoM2>80){
+    const kWpT=d.techoM2/8.5,cAn=d.consumoKWh*12,kWpC=cAn>0?(cAn*0.38)/1550:kWpT,kWpPC=d.potenciaKW>0?d.potenciaKW*0.80:kWpT;
+    const kWpI=Math.max(10,Math.round(Math.min(kWpT,kWpC,kWpPC)));
+    const kWhAn=kWpI*1550;
+    med.push({id:"solar",nombre:`Fotovoltaico (~${kWpI} kWp estimados, régimen 173/010)`,cat:"A",conf:"media",aMin:kWhAn*cMed*0.78,aMax:kWhAn*cMed*0.96,cMin:kWpI*820,cMax:kWpI*1200,nota:"Confirmar régimen UTE (173/010 vs 147/023) antes de cerrar número"});
+  }
+  if(!d.tieneBMS&&d.sup>2000)
+    med.push({id:"bms",nombre:"Sistema de gestión energética / BMS básico",cat:"B",conf:"baja",aMin:gastoElec*.04,aMax:gastoElec*.10,cMin:d.sup>0?d.sup*5:12000,cMax:d.sup>0?d.sup*15:55000,nota:"Monitoreo de demanda, control de picos, automatización de circuitos"});
+  const gTerm=(d.gasUSDmes+d.combUSDmes)*12;
+  if(gTerm>20000){
+    if(d.electrificaTerm)med.push({id:"bombaCalor",nombre:"Electrificación térmica — bomba de calor reemplaza caldera a combustible",cat:"B",conf:"media",aMin:gTerm*0.50,aMax:gTerm*0.68,cMin:Math.max(30000,gTerm*1.50),cMax:Math.max(90000,gTerm*2.80),nota:"Ahorro neto: elimina ~80% combustible, agrega ~25% electricidad (COP 3,5 vs caldera 80%). Cat. B: driver=consumo caldera en foto inicial"});
+    else med.push({id:"termico",nombre:"Eficiencia térmica (calderas, quemadores, recuperación de calor)",cat:"B",conf:"baja",aMin:gTerm*.10,aMax:gTerm*.22,cMin:25000,cMax:110000,nota:"Estimación muy preliminar; requiere auditoría térmica específica"});
+  }
+  const aMin=med.reduce((s,m)=>s+m.aMin,0),aMax=med.reduce((s,m)=>s+m.aMax,0);
+  const cMin=med.reduce((s,m)=>s+m.cMin,0),cMax=med.reduce((s,m)=>s+m.cMax,0);
+  const aMed=(aMin+aMax)/2,cMedio=(cMin+cMax)/2;
+  const payback=aMed>0&&cMedio>0?cMedio/aMed:0;
+  const gTotal=gastoElec+gTerm;
+  let score=0;
+  if(gTotal>400000)score+=35;else if(gTotal>200000)score+=25;else if(gTotal>100000)score+=15;else if(gTotal>50000)score+=8;
+  if(aMin>150000)score+=25;else if(aMin>80000)score+=18;else if(aMin>40000)score+=12;else if(aMin>20000)score+=6;
+  if(d.marcoLegal==="publico")score+=15;else if(d.marcoLegal==="rse")score+=8;
+  const aS={directo:15,referido:10,"frio-nombre":5,"sin-nombre":0};score+=aS[d.accDecisor]||0;
+  if(d.aliadoTec==="favor")score+=10;else if(d.aliadoTec==="neutro")score+=5;
+  const escOk=cMin>=150000;
+  let sem,semLbl,semDesc;
+  if(score>=65&&aMin>=60000&&escOk){sem="verde";semLbl="VIABLE — Proponer auditoría energética";semDesc="Potencial técnico, escala y acceso al decisor confirmados.";}
+  else if(score>=45||(aMin>=35000&&escOk)){sem="ambar";semLbl="ANALIZAR — Profundizar datos antes de avanzar";semDesc="Señales positivas pero se necesitan más datos para confirmar viabilidad ESCO.";}
+  else{sem="rojo";semLbl="NO PRIORIZAR — Escala o acceso insuficiente";semDesc="El proyecto no alcanza la escala de CIEMSI o faltan condiciones de acceso clave.";}
+  return{gastoElec,gTerm,gTotal,fu,demMed,med,aMin,aMax,cMin,cMax,payback,score,sem,semLbl,semDesc,cMed};
+}
+
+const fU=v=>v>=1000?`USD ${Math.round(v/1000)}k`:`USD ${Math.round(v)}`;
+const fX=v=>`USD ${Math.round(v).toLocaleString("es-UY")}`;
+const iS={width:"100%",padding:"8px 10px",border:`1px solid ${C.borde}`,borderRadius:4,fontSize:13,background:C.azulIn,color:C.azulTx,fontWeight:500};
+const sS={...iS};
+const lS={display:"block",fontWeight:600,marginBottom:5,fontSize:13};
+const bS={display:"block",fontSize:11,color:C.gris,marginBottom:5};
+const fS={marginBottom:16};
+const rS=(n=2)=>({display:"grid",gridTemplateColumns:Array(n).fill("1fr").join(" "),gap:14,marginBottom:0});
+const hS={fontWeight:700,fontSize:11,color:C.verde,borderBottom:`1px solid ${C.borde}`,paddingBottom:5,marginBottom:12,marginTop:6,letterSpacing:.6,textTransform:"uppercase"};
+
+function RG({opts,val,onChange}){
+  return <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+    {opts.map(o=><div key={o.v} onClick={()=>onChange(o.v)} style={{padding:"6px 13px",borderRadius:20,border:`1px solid ${val===o.v?C.verde:C.borde}`,background:val===o.v?C.verde:"#fff",color:val===o.v?"#fff":C.oscuro,cursor:"pointer",fontSize:12,fontWeight:val===o.v?700:400}}>{o.l}</div>)}
+  </div>;
+}
+
+function CK({id,checked,onChange,label,sub}){
+  return <div style={{marginBottom:12}}>
+    <label htmlFor={id} style={{display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer"}}>
+      <input type="checkbox" id={id} checked={checked} onChange={e=>onChange(e.target.checked)} style={{width:15,height:15,marginTop:2,flexShrink:0}}/>
+      <div><div style={{fontSize:13,fontWeight:600}}>{label}</div>{sub&&<div style={{fontSize:11,color:C.gris,marginTop:2}}>{sub}</div>}</div>
+    </label>
+  </div>;
+}
+
+const PASOS_SGTE={
+  verde:["Proponer auditoría energética formal (etapas 1–3 del proceso ESCO CIEMSI)","Confirmar aliado técnico (Jefe de Mantenimiento) como embajador interno antes de presentar al directorio","Preparar presentación comercial con caso de referencia hospitalario anonimizado","Si organismo público: invocar Decreto 289/015 (contratación directa) y Arts. 33–36 TOCAF","Confirmar régimen solar UTE (173/010 vs 147/023) antes de cualquier número de FV"],
+  ambar:["Conseguir facturas UTE de los últimos 12 meses para afinar estimaciones","Visitar las instalaciones y conocer al Jefe de Mantenimiento (primera reunión informal)","Pedir superficie real y planos de distribución de cargas","No avanzar a propuesta formal hasta tener datos de consumo HVAC confirmados"],
+  rojo:["Escala insuficiente para un contrato ESCO estándar de CIEMSI — no comprometer auditoría aún","Evaluar si hay valor estratégico (vitrina, referidos) que justifique un análisis menor","Registrar en pipeline para revisitar en 12–18 meses si el cliente expande operaciones"],
+};
+
+function App(){
+  const PASOS=["Identificación","Perfil eléctrico","Sistemas","Resultados"];
+  const [paso,setPaso]=useState(0);
+  const [verComb,setVerComb]=useState(false);
+  const INIT={nombreCliente:"",sector:"",sup:"",anoCons:"",marcoLegal:"privado",accDecisor:"sin-nombre",aliadoTec:"neutro",tarifa:"",potenciaKW:"",consumoKWh:"",facturaUSD:"",horasDia:12,diasSemana:5,operaPunta:"parcial",iluminacion:"fluorescente",climatizacion:"split-viejo",envolvente:false,motoreskW:"",techoM2:"",tieneBMS:false,gasUSDmes:0,combUSDmes:0,electrificaTerm:false};
+  const [d,setD]=useState(INIT);
+  const upd=(k,v)=>setD(p=>({...p,[k]:v}));
+  const updN=(k,v)=>upd(k,v===""?"":parseFloat(v)||0);
+  const dN={...d,sup:parseFloat(d.sup)||0,potenciaKW:parseFloat(d.potenciaKW)||0,consumoKWh:parseFloat(d.consumoKWh)||0,facturaUSD:parseFloat(d.facturaUSD)||0,motoreskW:parseFloat(d.motoreskW)||0,techoM2:parseFloat(d.techoM2)||0};
+  const res=useMemo(()=>calcular(dN),[JSON.stringify(dN)]);
+  const canNext=()=>{if(paso===0)return d.sector!==""&&d.marcoLegal!=="";if(paso===1)return parseFloat(d.facturaUSD)>0||parseFloat(d.consumoKWh)>0;return true;};
+
+  const P0=()=><>
+    <div style={rS(2)}>
+      <div style={fS}><label style={lS}>Cliente / organización</label><input style={iS} placeholder="Ej: Hospital Pasteur" value={d.nombreCliente} onChange={e=>upd("nombreCliente",e.target.value)}/></div>
+      <div style={fS}><label style={lS}>Sector *</label><select style={sS} value={d.sector} onChange={e=>upd("sector",e.target.value)}><option value="">— Seleccioná —</option>{SECTORES.map(s=><option key={s.v} value={s.v}>{s.l}</option>)}</select></div>
+    </div>
+    <div style={rS(2)}>
+      <div style={fS}><label style={lS}>Superficie total (m²)</label><span style={bS}>Edificio, planta o predio. Estimación suficiente.</span><input style={iS} type="number" placeholder="Ej: 8500" value={d.sup} onChange={e=>upd("sup",e.target.value)}/></div>
+      <div style={fS}><label style={lS}>Antigüedad</label><select style={sS} value={d.anoCons} onChange={e=>upd("anoCons",e.target.value)}><option value="">— Seleccioná —</option>{ANOS.map(a=><option key={a.v} value={a.v}>{a.l}</option>)}</select></div>
+    </div>
+    <div style={hS}>Contexto comercial y acceso</div>
+    <div style={fS}><label style={lS}>Marco legal del cliente *</label><RG val={d.marcoLegal} onChange={v=>upd("marcoLegal",v)} opts={[{v:"publico",l:"Organismo público (Decreto 289/015 + TOCAF)"},{v:"rse",l:"Empresa privada con RSE / ESG activo"},{v:"privado",l:"Empresa privada sin ventaja legal específica"}]}/></div>
+    <div style={{...fS,marginTop:14}}><label style={lS}>Accesibilidad al decisor</label><span style={bS}>ASSE: Diego Pintos (Gerente Finanzas). Hospitales privados: Director / Presidente.</span><RG val={d.accDecisor} onChange={v=>upd("accDecisor",v)} opts={[{v:"directo",l:"Contacto directo confirmado"},{v:"referido",l:"Referido de 1° grado"},{v:"frio-nombre",l:"Frío con nombre identificado"},{v:"sin-nombre",l:"Sin contacto aún"}]}/></div>
+    <div style={{...fS,marginTop:14}}><label style={lS}>Jefe/Encargado de Mantenimiento (aliado técnico clave)</label><span style={bS}>Puede ser ingeniero o idóneo. Hay que tenerlo de nuestro lado antes de presentar al directorio.</span><RG val={d.aliadoTec} onChange={v=>upd("aliadoTec",v)} opts={[{v:"favor",l:"Identificado y a favor"},{v:"neutro",l:"Identificado, neutral"},{v:"adverso",l:"Resistente / adverso"},{v:"desconocido",l:"No identificado aún"}]}/></div>
+  </>;
+
+  const P1=()=>{
+    const fU2=dN.potenciaKW>0&&dN.consumoKWh>0?(dN.consumoKWh/(dN.horasDia*dN.diasSemana*4.33))/dN.potenciaKW:0;
+    return <>
+      <div style={rS(2)}>
+        <div style={fS}><label style={lS}>Tarifa UTE actual</label><select style={sS} value={d.tarifa} onChange={e=>upd("tarifa",e.target.value)}><option value="">— Seleccioná —</option>{TARIFAS.map(t=><option key={t.v} value={t.v}>{t.l}</option>)}</select></div>
+        <div style={fS}><label style={lS}>Potencia contratada (kW)</label><span style={bS}>Dato clave para evaluar sobredimensionamiento</span><input style={iS} type="number" placeholder="Ej: 350" value={d.potenciaKW} onChange={e=>upd("potenciaKW",e.target.value)}/></div>
+      </div>
+      <div style={rS(2)}>
+        <div style={fS}><label style={lS}>Factura mensual UTE promedio (USD sin IVA) *</label><span style={bS}>Si no tenés, dejá en blanco y completá el consumo</span><input style={iS} type="number" placeholder="Ej: 22000" value={d.facturaUSD} onChange={e=>upd("facturaUSD",e.target.value)}/></div>
+        <div style={fS}><label style={lS}>Consumo mensual promedio (kWh/mes)</label><span style={bS}>Promedio de 12 meses si está disponible</span><input style={iS} type="number" placeholder="Ej: 210000" value={d.consumoKWh} onChange={e=>upd("consumoKWh",e.target.value)}/></div>
+      </div>
+      <div style={rS(3)}>
+        <div style={fS}><label style={lS}>Horas operación / día</label><input style={iS} type="number" min={1} max={24} value={d.horasDia} onChange={e=>updN("horasDia",e.target.value)}/></div>
+        <div style={fS}><label style={lS}>Días operación / semana</label><input style={iS} type="number" min={1} max={7} value={d.diasSemana} onChange={e=>updN("diasSemana",e.target.value)}/></div>
+        <div style={fS}><label style={lS}>¿Opera en Punta? (18–22 h, L–V)</label><select style={sS} value={d.operaPunta} onChange={e=>upd("operaPunta",e.target.value)}><option value="si">Sí, opera plenamente</option><option value="parcial">Parcialmente</option><option value="no">No opera ahí</option></select></div>
+      </div>
+      {fU2>0&&<div style={{background:fU2<.50?"#FFF3E0":C.verdeIn,border:`1px solid ${fU2<.50?"#FFB74D":C.verde}`,borderRadius:6,padding:"10px 14px",marginTop:4}}>
+        <strong>Factor de utilización estimado: {(fU2*100).toFixed(0)}%</strong>
+        <span style={{marginLeft:8,fontSize:12,color:fU2<.50?C.ambar:C.verde}}>{fU2<.20?"🔴 Potencia extremadamente sobredimensionada — caso de primer orden":fU2<.33?"⚠ Potencia muy sobredimensionada — alto potencial de ahorro directo":fU2<.50?"ℹ Potencia posiblemente sobredimensionada":"✓ Factor razonable"}</span>
+        <div style={{fontSize:11,color:C.gris,marginTop:4}}>Demanda media estimada: {Math.round(dN.consumoKWh/(dN.horasDia*dN.diasSemana*4.33))} kW sobre {dN.potenciaKW} kW contratados · En MC/GC se factura siempre la mayor entre medida y contratada</div>
+      </div>}
+    </>;
+  };
+
+  const P2=()=><>
+    <div style={hS}>Iluminación</div>
+    <div style={fS}><label style={lS}>Tipo predominante</label><RG val={d.iluminacion} onChange={v=>upd("iluminacion",v)} opts={[{v:"fluorescente",l:"Fluorescente / TL"},{v:"mercurio",l:"Vapor de mercurio (industrial)"},{v:"sodio",l:"Vapor de sodio alta presión"},{v:"mixto",l:"Mixto (algo de LED, algo viejo)"},{v:"led",l:"Ya tiene LED completo"}]}/></div>
+    <div style={hS}>Climatización y acondicionamiento térmico</div>
+    <div style={fS}><label style={lS}>Tipo de sistema de climatización</label><RG val={d.climatizacion} onChange={v=>upd("climatizacion",v)} opts={[{v:"split-viejo",l:"Split/Multi-split (>10 años)"},{v:"chiller-viejo",l:"Chiller centralizado antiguo"},{v:"central-viejo",l:"Fan-coil central / ductos (>15 años)"},{v:"vrf-viejo",l:"VRF (>8 años, sin BMS)"},{v:"split-moderno",l:"Split inverter moderno (<5 años)"},{v:"vrf-moderno",l:"VRF moderno + BMS (<5 años)"},{v:"ninguna",l:"Sin climatización significativa"}]}/></div>
+    <CK id="env" checked={d.envolvente} onChange={v=>upd("envolvente",v)} label="Envolvente edilicia deficiente (sin aislación, ventanas sin DVH, filtraciones, puentes térmicos)" sub="Típico en edificios pre-2000. Aumenta la carga de climatización 15–25 %. Incluye como medida complementaria."/>
+    <div style={hS}>Motores, FV y automatización</div>
+    <div style={rS(2)}>
+      <div style={fS}><label style={lS}>Potencia de motores controlables (kW total)</label><span style={bS}>Bombas, ventiladores, compresores, elevadores. Estimado.</span><input style={iS} type="number" placeholder="Ej: 150" value={d.motoreskW} onChange={e=>upd("motoreskW",e.target.value)}/></div>
+      <div style={fS}><label style={lS}>Techo disponible para solar FV (m²)</label><span style={bS}>Estimá desde Google Maps satélite. 0 = no aplica.</span><input style={iS} type="number" placeholder="Ej: 2500" value={d.techoM2} onChange={e=>upd("techoM2",e.target.value)}/></div>
+    </div>
+    <CK id="bms" checked={d.tieneBMS} onChange={v=>upd("tieneBMS",v)} label="Ya tiene sistema de automatización / BMS operativo"/>
+    <div style={{borderTop:`1px dashed ${C.borde}`,paddingTop:14,marginTop:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setVerComb(v=>!v)}>
+        <span style={{fontWeight:600,fontSize:13,color:verComb?C.verde:"#555"}}>{verComb?"▼":"▶"} Opcional: gas natural y combustibles</span>
+        <span style={{fontSize:11,color:"#999"}}>si tiene calderas, proceso térmico o generación a gasoil</span>
+      </div>
+      {verComb&&<div style={{...rS(2),marginTop:12}}>
+        <div style={fS}><label style={lS}>Gas natural — gasto mensual (USD sin IVA)</label><input style={iS} type="number" placeholder="Ej: 5500" value={d.gasUSDmes||""} onChange={e=>updN("gasUSDmes",e.target.value)}/></div>
+        <div style={fS}><label style={lS}>Gasoil / fuel oil / GLP — gasto mensual (USD)</label><input style={iS} type="number" placeholder="Ej: 2200" value={d.combUSDmes||""} onChange={e=>updN("combUSDmes",e.target.value)}/></div>
+          <CK id="electrificaTerm" checked={d.electrificaTerm} onChange={v=>upd("electrificaTerm",v)} label="¿Tiene calderas a combustible candidatas a reemplazo por bomba de calor?" sub="Activa cálculo de ahorro neto cruzado (−combustible +electricidad, COP 3,5 vs caldera 80%)."/>
+      </div>}
+    </div>
+  </>;
+
+  const P3=()=>{
+    if(!res)return<div style={{textAlign:"center",padding:40,color:C.gris}}>Completá al menos la factura UTE en el Paso 2.<br/><button style={{marginTop:16,padding:"8px 20px",background:C.verde,color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:700}} onClick={()=>setPaso(1)}>← Ir al Paso 2</button></div>;
+    const{med,aMin,aMax,cMin,cMax,payback,score,sem,semLbl,semDesc,gastoElec,gTerm,gTotal,fu}=res;
+    const sc={verde:C.verde,ambar:C.ambar,rojo:C.rojo}[sem];
+    const cd=med.map(m=>({name:m.nombre.length>38?m.nombre.slice(0,37)+"…":m.nombre,min:Math.round(m.aMin/1000),id:m.id}));
+    return<div>
+      <div style={{border:`3px solid ${sc}`,borderRadius:8,padding:"16px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
+        <div style={{width:52,height:52,borderRadius:"50%",background:sc,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{color:"#fff",fontSize:22,fontWeight:800}}>{sem==="verde"?"✓":sem==="ambar"?"!":"✕"}</span>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,fontSize:15,color:sc}}>{semLbl}</div>
+          <div style={{fontSize:12,color:"#555",marginTop:3}}>{semDesc}</div>
+        </div>
+        <div style={{textAlign:"center",minWidth:60}}>
+          <div style={{fontSize:10,color:C.gris,marginBottom:1}}>Score ESCO</div>
+          <div style={{fontSize:30,fontWeight:900,color:sc,lineHeight:1}}>{score}</div>
+          <div style={{fontSize:10,color:C.gris}}>/100</div>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:18}}>
+        {[{lbl:"Ahorro potencial (conservador)",val:fU(aMin),sub:`hasta ${fU(aMax)}/año`,col:C.verde},{lbl:"CAPEX estimado",val:fU(cMin),sub:`hasta ${fU(cMax)}`,col:C.oscuro},{lbl:"Payback simple",val:payback>0?`${payback.toFixed(1)} años`:"—",sub:"sobre valores medios",col:payback>0&&payback<10?C.verde:C.ambar}].map((k,i)=>(
+          <div key={i} style={{background:C.claro,border:`1px solid ${C.borde}`,borderRadius:6,padding:"11px 13px"}}>
+            <div style={{fontSize:10,color:C.gris,marginBottom:3}}>{k.lbl}</div>
+            <div style={{fontSize:20,fontWeight:900,color:k.col}}>{k.val}</div>
+            <div style={{fontSize:11,color:"#999",marginTop:2}}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:C.claro,border:`1px solid ${C.borde}`,borderRadius:6,padding:"12px 14px",marginBottom:18}}>
+        <div style={{fontWeight:700,fontSize:11,color:C.gris,marginBottom:7,textTransform:"uppercase",letterSpacing:.5}}>Base energética analizada</div>
+        <div style={{display:"flex",gap:20,flexWrap:"wrap",fontSize:12}}>
+          <span>Gasto eléctrico (UTE): <strong>{fX(gastoElec)}/año</strong></span>
+          {gTerm>0&&<span>Gas/combustibles: <strong>{fX(gTerm)}/año</strong></span>}
+          <span>Total: <strong>{fX(gTotal)}/año</strong></span>
+          {fu>0&&<span>Factor utilización: <strong style={{color:fu<.50?C.ambar:C.verde}}>{(fu*100).toFixed(0)}%</strong></span>}
+        </div>
+      </div>
+      <div style={hS}>Desglose por medida — ahorro conservador (kUSD/año)</div>
+      <div style={{marginBottom:14}}>
+        <ResponsiveContainer width="100%" height={Math.max(180,med.length*46)}>
+          <BarChart data={cd} layout="vertical" margin={{top:2,right:50,left:8,bottom:0}}>
+            <XAxis type="number" unit="k" tick={{fontSize:11}}/>
+            <YAxis type="category" dataKey="name" width={235} tick={{fontSize:10}}/>
+            <Tooltip formatter={v=>[`USD ${v}k`,"Ahorro conservador"]}/>
+            <Bar dataKey="min" barSize={12} radius={[0,4,4,0]}>
+              {cd.map((e,i)=><Cell key={i} fill={MCOL[e.id]||C.verde}/>)}
+              <LabelList dataKey="min" position="right" formatter={v=>`${v}k`} style={{fontSize:11,fill:C.oscuro}}/>
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{overflowX:"auto",marginBottom:18}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{background:C.oscuro,color:"#fff"}}>{["Medida","Cat.","Ahorro min","Ahorro max","CAPEX estimado"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:h==="Medida"?"left":"right",fontWeight:600}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {med.map((m,i)=>(
+              <tr key={m.id} style={{background:i%2===0?"#fff":C.claro}}>
+                <td style={{padding:"7px 10px"}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:9,height:9,borderRadius:2,background:MCOL[m.id]||C.verde,flexShrink:0}}/><div><div style={{fontWeight:500}}>{m.nombre}</div><div style={{fontSize:10,color:"#999",marginTop:2}}>{m.nota}</div></div></div></td>
+                <td style={{padding:"7px 10px",textAlign:"center"}}><span style={{background:m.cat==="A"?C.verdeIn:"#FFF3E0",color:m.cat==="A"?C.verdeTx:C.ambar,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{m.cat}</span></td>
+                <td style={{padding:"7px 10px",textAlign:"right",fontWeight:700,color:C.verdeTx}}>{fU(m.aMin)}</td>
+                <td style={{padding:"7px 10px",textAlign:"right",color:"#555"}}>{fU(m.aMax)}</td>
+                <td style={{padding:"7px 10px",textAlign:"right",color:"#555"}}>{m.cMin>0?`${fU(m.cMin)} – ${fU(m.cMax)}`:"—"}</td>
+              </tr>
+            ))}
+            <tr style={{background:C.verdeIn,fontWeight:700}}>
+              <td style={{padding:"8px 10px"}}>TOTAL</td><td/>
+              <td style={{padding:"8px 10px",textAlign:"right",color:C.verdeTx}}>{fU(aMin)}/año</td>
+              <td style={{padding:"8px 10px",textAlign:"right",color:C.verdeTx}}>{fU(aMax)}/año</td>
+              <td style={{padding:"8px 10px",textAlign:"right"}}>{fU(cMin)} – {fU(cMax)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style={{display:"flex",gap:16,marginBottom:12,fontSize:11,color:C.gris}}>
+        <span><strong style={{color:C.verdeTx}}>Cat. A</strong> — Determinista: ficto fijo sin achicar.</span>
+        <span><strong style={{color:C.ambar}}>Cat. B</strong> — Con incertidumbre: ficto anclado en driver medido en foto inicial.</span>
+      </div>
+      <div style={hS}>Próximos pasos sugeridos</div>
+      <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:16}}>
+        {PASOS_SGTE[sem].map((p,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"flex-start"}}><span style={{color:sc,fontWeight:800,fontSize:14,lineHeight:1.4}}>→</span><span style={{fontSize:13}}>{p}</span></div>)}
+      </div>
+      <div style={{fontSize:11,color:C.gris,background:C.claro,border:`1px solid ${C.borde}`,borderRadius:4,padding:"9px 13px",marginBottom:14}}>
+        <strong>Metodología:</strong> Estimaciones de triage. Referencia conservadora: 20–25 % de ahorro sobre gasto eléctrico como orden de magnitud general. Valores sin IVA. No constituyen propuesta ni compromiso. Pliego UTE enero 2026.
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:12,borderTop:`1px solid ${C.borde}`}}>
+        <div style={{fontSize:11,color:"#999"}}>{d.nombreCliente&&<strong>{d.nombreCliente}</strong>} · Triage ESCO CIEMSI · {new Date().toLocaleDateString("es-UY")}</div>
+        <button style={{background:"transparent",border:`1px solid ${C.borde}`,padding:"7px 18px",borderRadius:4,cursor:"pointer",fontSize:12}} onClick={()=>{setD(INIT);setPaso(0);}}>Nueva evaluación</button>
+      </div>
+    </div>;
+  };
+
+  const CC=[P0,P1,P2,P3];
+  const Cc=CC[paso];
+  return(
+    <div style={{fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",maxWidth:820,margin:"0 auto",background:"#fff",color:C.oscuro,fontSize:14,boxShadow:"0 2px 12px rgba(0,0,0,.1)",borderRadius:8,overflow:"hidden"}}>
+      <div style={{background:C.oscuro,color:"#fff",padding:"15px 22px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontWeight:900,fontSize:16,letterSpacing:1}}>TRIAGE ESCO</div>
+          <div style={{fontSize:11,opacity:.65,marginTop:1}}>Evaluación rápida de potencial energético · Grandes consumidores Uruguay</div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{background:C.verde,color:"#fff",fontSize:10,fontWeight:800,padding:"3px 8px",borderRadius:3,letterSpacing:1}}>CIEMSI GROUP</div>
+          <div style={{fontSize:10,color:"#aaa",marginTop:3}}>v1.1 · Pliego UTE 2026</div>
+        </div>
+      </div>
+      <div style={{display:"flex",borderBottom:`1px solid ${C.borde}`,background:C.claro}}>
+        {PASOS.map((p,i)=><div key={i} style={{flex:1,padding:"9px 4px",textAlign:"center",fontSize:12,fontWeight:i===paso?700:400,color:i<paso?C.verde:i===paso?C.oscuro:"#bbb",borderBottom:i===paso?`3px solid ${C.verde}`:"3px solid transparent"}}>{i<paso?"✓ ":""}{p}</div>)}
+      </div>
+      <div style={{padding:"22px 24px"}}><Cc/></div>
+      {paso<3&&<div style={{display:"flex",justifyContent:"space-between",padding:"14px 24px",borderTop:`1px solid ${C.borde}`,background:C.claro}}>
+        <button style={{background:"transparent",border:`1px solid ${C.borde}`,padding:"9px 22px",borderRadius:4,cursor:paso===0?"not-allowed":"pointer",fontSize:13,opacity:paso===0?.4:1}} onClick={()=>setPaso(p=>Math.max(0,p-1))} disabled={paso===0}>← Anterior</button>
+        <div style={{fontSize:12,color:C.gris,alignSelf:"center"}}>Paso {paso+1} de 3</div>
+        <button style={{background:C.verde,color:"#fff",border:"none",padding:"9px 26px",borderRadius:4,fontWeight:700,cursor:canNext()?"pointer":"not-allowed",fontSize:13,opacity:canNext()?1:.45}} onClick={()=>{if(canNext())setPaso(p=>p+1);}}>{paso===2?"Ver resultados →":"Siguiente →"}</button>
+      </div>}
+    </div>
+  );
+}
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
+</script>
+</body>
+</html>
